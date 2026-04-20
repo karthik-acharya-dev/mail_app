@@ -2,11 +2,12 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Mail, Users, Settings, LogOut, Search } from "lucide-react";
+import { Mail, Users, Settings, LogOut, Search, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { icon: Mail, label: "Inbox", href: "/dashboard/email" },
+  { icon: Send, label: "Sent", href: "/dashboard/email/sent" },
   { icon: Users, label: "Clients", href: "/dashboard/clients" },
   { icon: Settings, label: "Settings", href: "/dashboard/settings" },
 ];
@@ -49,7 +50,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         <nav className="flex-1 px-4 py-4 space-y-1">
           {navItems.map((item) => {
-            const isActive = pathname.startsWith(item.href);
+            const isActive = item.href === "/dashboard/email" 
+              ? pathname === "/dashboard/email" || pathname === "/dashboard/email/"
+              : pathname === item.href;
+            
             return (
               <Link
                 key={item.href}

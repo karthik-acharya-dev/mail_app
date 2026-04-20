@@ -21,7 +21,7 @@ export const authApi = {
 };
 
 export const emailApi = {
-  getEmails: () => api.get('/emails').then(res => res.data),
+  getEmails: (folder: string = 'inbox') => api.get(`/emails?folder=${folder}`).then(res => res.data),
   syncEmails: () => api.post('/emails/sync').then(res => res.data),
   sendEmail: (data: { to: string; subject: string; body: string; attachments?: File[] }) => {
     const formData = new FormData();
