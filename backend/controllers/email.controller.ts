@@ -5,10 +5,21 @@ import { fetchUnsyncedEmails, sendGmailEmail } from '../services/gmail.service';
 export const getEmails = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
-    const { data: emails, error } = await supabase
+    const { folder } = req.query;
+    
+    let query = supabase
       .from('emails')
       .select('*, client:email_client_links(client_id, clients(name))')
-      .eq('user_id', userId)
+      .eq('user_id', userId);
+
+    if (folder === 'sent') {
+      query = query.contains('labels', ['SENT']);
+    } else {
+      // Default to inbox: anything in INBOX or not explicitly SENT
+      query = query.contains('labels', ['INBOX']);
+    }
+
+    const { data: emails, error } = await query
       .order('timestamp', { ascending: false })
       .limit(50);
 
@@ -55,7 +66,7 @@ export const sendEmail = async (req: Request, res: Response) => {
     // Find the primary gmail account
     const { data: account, error: accError } = await supabase
       .from('provider_accounts')
-      .select('id')
+      .select('id, email_address')
       .eq('user_id', userId)
       .eq('provider_type', 'gmail')
       .single();
@@ -67,6 +78,22 @@ export const sendEmail = async (req: Request, res: Response) => {
     const attachments = (req.files as Express.Multer.File[]) || [];
     const receipt = await sendGmailEmail(account.id, to, subject, body, attachments);
     
+    // Save to database so it shows up in "Sent" folder immediately
+    await supabase.from('emails').insert({
+      user_id: userId,
+      account_id: account.id,
+      provider_message_id: receipt.id,
+      subject,
+      sender: account.email_address, // The user is the sender
+      recipients: { to: [to] },
+      snippet: body.substring(0, 200),
+      body_plain: body,
+      labels: ['SENT'],
+      is_read: true,
+      has_attachments: attachments.length > 0,
+      timestamp: new Date().toISOString()
+    });
+
     res.json({ message: 'Email sent successfully', provider_message_id: receipt.id });
   } catch (error) {
     console.error('Send Email Error:', error);
