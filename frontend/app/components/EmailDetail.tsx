@@ -9,9 +9,11 @@ interface EmailDetailProps {
   email: any;
   onClose: () => void;
   onLinkToClient: (clientId: string) => void;
+  onReply?: (email: any) => void;
+  onForward?: (email: any) => void;
 }
 
-export default function EmailDetail({ email, onClose, onLinkToClient }: EmailDetailProps) {
+export default function EmailDetail({ email, onClose, onLinkToClient, onReply, onForward }: EmailDetailProps) {
   const [showCRM, setShowCRM] = useState(false);
   const [clients, setClients] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -103,11 +105,17 @@ export default function EmailDetail({ email, onClose, onLinkToClient }: EmailDet
               <ArrowLeft className="w-5 h-5" />
             </button>
             <div className="flex bg-accent/50 p-1 rounded-xl">
-              <button className="px-3 py-1.5 rounded-lg hover:bg-background text-muted-foreground transition-all flex items-center gap-2 text-xs font-medium">
+              <button 
+                onClick={() => onReply?.(email)}
+                className="px-3 py-1.5 rounded-lg hover:bg-background text-muted-foreground transition-all flex items-center gap-2 text-xs font-medium"
+              >
                 <Reply className="w-3.5 h-3.5" />
                 Reply
               </button>
-              <button className="px-3 py-1.5 rounded-lg hover:bg-background text-muted-foreground transition-all flex items-center gap-2 text-xs font-medium">
+              <button 
+                onClick={() => onForward?.(email)}
+                className="px-3 py-1.5 rounded-lg hover:bg-background text-muted-foreground transition-all flex items-center gap-2 text-xs font-medium"
+              >
                 <Forward className="w-3.5 h-3.5" />
                 Forward
               </button>
@@ -177,11 +185,17 @@ export default function EmailDetail({ email, onClose, onLinkToClient }: EmailDet
           
           <div className="mt-12 pt-8 border-t border-border/50">
             <div className="flex items-center gap-4">
-               <button className="px-4 py-2 rounded-xl bg-secondary text-secondary-foreground text-xs font-bold hover:bg-secondary/80 transition-all flex items-center gap-2">
+               <button 
+                 onClick={() => onReply?.(email)}
+                 className="px-4 py-2 rounded-xl bg-secondary text-secondary-foreground text-xs font-bold hover:bg-secondary/80 transition-all flex items-center gap-2"
+               >
                  <Reply className="w-3.5 h-3.5" />
                  Reply
                </button>
-               <button className="px-4 py-2 rounded-xl border border-border text-xs font-bold hover:bg-accent transition-all flex items-center gap-2">
+               <button 
+                 onClick={() => onForward?.(email)}
+                 className="px-4 py-2 rounded-xl border border-border text-xs font-bold hover:bg-accent transition-all flex items-center gap-2"
+               >
                  <Forward className="w-3.5 h-3.5" />
                  Forward
                </button>

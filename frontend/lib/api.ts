@@ -23,7 +23,24 @@ export const authApi = {
 export const emailApi = {
   getEmails: () => api.get('/emails').then(res => res.data),
   syncEmails: () => api.post('/emails/sync').then(res => res.data),
-  sendEmail: (data: { to: string; subject: string; body: string }) => api.post('/emails/send', data).then(res => res.data),
+  sendEmail: (data: { to: string; subject: string; body: string; attachments?: File[] }) => {
+    const formData = new FormData();
+    formData.append('to', data.to);
+    formData.append('subject', data.subject);
+    formData.append('body', data.body);
+    
+    if (data.attachments) {
+      data.attachments.forEach(file => {
+        formData.append('attachments', file);
+      });
+    }
+    
+    return api.post('/emails/send', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    }).then(res => res.data);
+  },
   linkToClient: (emailId: string, clientId: string) => api.post('/emails/link', { emailId, clientId }).then(res => res.data),
   searchEmails: (query: string) => api.get(`/emails/search?q=${query}`).then(res => res.data),
 };
