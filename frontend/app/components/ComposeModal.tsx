@@ -1,27 +1,55 @@
 "use client";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { motion } from "framer-motion";
 import { X, Send, Paperclip, Loader2 } from "lucide-react";
+import { emailApi } from "@/lib/api";
+import { toast } from "sonner";
 
 interface ComposeModalProps {
   onClose: () => void;
+  initialTo?: string;
+  initialSubject?: string;
+  initialBody?: string;
 }
 
-export default function ComposeModal({ onClose }: ComposeModalProps) {
-  const [to, setTo] = useState("");
-  const [subject, setSubject] = useState("");
-  const [body, setBody] = useState("");
+export default function ComposeModal({ 
+  onClose, 
+  initialTo = "", 
+  initialSubject = "", 
+  initialBody = "" 
+}: ComposeModalProps) {
+  const [to, setTo] = useState(initialTo);
+  const [subject, setSubject] = useState(initialSubject);
+  const [body, setBody] = useState(initialBody);
   const [isSending, setIsSending] = useState(false);
+  const [attachments, setAttachments] = useState<File[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const newFiles = Array.from(e.target.files);
+      setAttachments(prev => [...prev, ...newFiles]);
+    }
+  };
+
+  const removeAttachment = (index: number) => {
+    setAttachments(prev => prev.filter((_, i) => i !== index));
+  };
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!to || !subject || !body) return;
+    
     setIsSending(true);
-    // await emailApi.sendEmail({ to, subject, body });
-    // Simulate delay
-    setTimeout(() => {
-      setIsSending(false);
+    try {
+      await emailApi.sendEmail({ to, subject, body, attachments });
+      toast.success("Email sent successfully!");
       onClose();
-    }, 1500);
+    } catch (error) {
+      toast.error("Failed to send email. Please check your connection.");
+    } finally {
+      setIsSending(false);
+    }
   };
 
   return (
@@ -81,6 +109,24 @@ export default function ComposeModal({ onClose }: ComposeModalProps) {
             placeholder="Write your message here..."
           />
           
+          {/* Attachments List */}
+          {attachments.length > 0 && (
+            <div className="px-4 py-2 flex flex-wrap gap-2 max-h-32 overflow-y-auto border-t border-border bg-secondary/5">
+              {attachments.map((file, index) => (
+                <div key={index} className="flex items-center gap-2 px-2 py-1 bg-background border border-border rounded-md text-[11px] group">
+                  <span className="max-w-[120px] truncate">{file.name}</span>
+                  <button 
+                    type="button" 
+                    onClick={() => removeAttachment(index)}
+                    className="text-muted-foreground hover:text-destructive"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          
           {/* Footer Actions */}
           <div className="px-4 py-3 border-t border-border bg-secondary/20 flex items-center justify-between">
             <button
@@ -92,7 +138,18 @@ export default function ComposeModal({ onClose }: ComposeModalProps) {
               Send
             </button>
             
-            <button type="button" className="p-2 text-muted-foreground hover:bg-accent rounded-lg transition-colors">
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileChange}
+              multiple
+              className="hidden"
+            />
+            <button 
+              type="button" 
+              onClick={() => fileInputRef.current?.click()}
+              className="p-2 text-muted-foreground hover:bg-accent rounded-lg transition-colors"
+            >
               <Paperclip className="w-5 h-5" />
             </button>
           </div>

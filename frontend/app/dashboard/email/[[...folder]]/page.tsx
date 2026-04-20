@@ -1,21 +1,26 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
-import EmailList from "../../components/EmailList";
-import EmailDetail from "../../components/EmailDetail";
-import ComposeModal from "../../components/ComposeModal";
-import OnboardingView from "../../components/OnboardingView";
+import EmailList from "@/app/components/EmailList";
+import EmailDetail from "@/app/components/EmailDetail";
+import ComposeModal from "@/app/components/ComposeModal";
+import OnboardingView from "@/app/components/OnboardingView";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, RefreshCcw, Mail, Loader2 } from "lucide-react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useParams } from "next/navigation";
 import { emailApi, authApi } from "@/lib/api";
 
 export default function EmailPage() {
+  const params = useParams();
+  const folderArr = params?.folder as string[];
+  const folder = folderArr?.[0] || "inbox";
+  
   const [emails, setEmails] = useState<any[]>([]);
   const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
   const [isComposeOpen, setIsComposeOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isConnected, setIsConnected] = useState<boolean | null>(null);
+  const [composeData, setComposeData] = useState<{ to?: string; subject?: string; body?: string }>({});
   
   const searchParams = useSearchParams();
   const query = searchParams.get("q");
@@ -44,7 +49,7 @@ export default function EmailPage() {
       if (query) {
         data = await emailApi.searchEmails(query);
       } else {
-        data = await emailApi.getEmails();
+        data = await emailApi.getEmails(folder);
       }
       setEmails(data || []);
     } catch (error) {
@@ -52,7 +57,7 @@ export default function EmailPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [query, isConnected]);
+  }, [query, isConnected, folder]);
 
   useEffect(() => {
     if (isConnected !== null) {
@@ -73,6 +78,24 @@ export default function EmailPage() {
     } finally {
       setIsSyncing(false);
     }
+  };
+
+  const handleReply = (email: any) => {
+    setComposeData({
+      to: email.sender,
+      subject: `Re: ${email.subject}`,
+      body: `\n\nOn ${new Date(email.timestamp).toLocaleString()}, ${email.sender} wrote:\n> ${email.snippet}`
+    });
+    setIsComposeOpen(true);
+  };
+
+  const handleForward = (email: any) => {
+    setComposeData({
+      to: "",
+      subject: `Fwd: ${email.subject}`,
+      body: `\n\n---------- Forwarded message ----------\nFrom: ${email.sender}\nDate: ${new Date(email.timestamp).toLocaleString()}\nSubject: ${email.subject}\n\n${email.snippet}`
+    });
+    setIsComposeOpen(true);
   };
 
   // 1. Loading State (Initial)
@@ -96,7 +119,7 @@ export default function EmailPage() {
       <div className={`flex flex-col h-full bg-card/30 border-r border-border backdrop-blur-md transition-all duration-300 ${selectedEmailId ? 'w-full md:w-[400px] lg:w-[450px] hidden md:flex' : 'w-full'}`}>
         <div className="p-4 border-b border-border flex items-center justify-between bg-card/50">
           <div className="flex items-center gap-2">
-            <h2 className="font-semibold text-lg">{query ? 'Search Results' : 'Inbox'}</h2>
+            <h2 className="font-semibold text-lg capitalize">{query ? 'Search Results' : folder}</h2>
             {query && (
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-bold border border-primary/20">
                 "{query}"
@@ -131,7 +154,7 @@ export default function EmailPage() {
           ) : emails.length === 0 ? (
              <div className="flex flex-col items-center justify-center h-64 opacity-30">
                <Mail className="w-12 h-12 mb-2" />
-               <p className="text-sm">Inbox is empty</p>
+               <p className="text-sm">{folder === 'sent' ? 'No sent emails' : 'Inbox is empty'}</p>
              </div>
           ) : (
             <EmailList emails={emails} selectedId={selectedEmailId} onSelect={setSelectedEmailId} />
@@ -146,13 +169,15 @@ export default function EmailPage() {
             <div className="w-20 h-20 rounded-3xl bg-accent flex items-center justify-center mb-6 shadow-inner ring-1 ring-border/50">
               <Mail className="w-10 h-10 opacity-30" />
             </div>
-            <h3 className="text-lg font-semibold text-foreground/80 mb-1">Your Inbox</h3>
+            <h3 className="text-lg font-semibold text-foreground/80 mb-1">Your {folder === 'sent' ? 'Sent Messages' : 'Inbox'}</h3>
             <p className="text-sm opacity-60 px-8">Select an email from the list to view its contents and link it to your CRM database.</p>
           </div>
         ) : (
           <EmailDetail
             email={selectedEmail}
             onClose={() => setSelectedEmailId(null)}
+            onReply={handleReply}
+            onForward={handleForward}
             onLinkToClient={async (clientId) => {
               try {
                 await emailApi.linkToClient(selectedEmailId, clientId);
@@ -168,7 +193,15 @@ export default function EmailPage() {
       {/* Compose Modal */}
       <AnimatePresence>
         {isComposeOpen && (
-          <ComposeModal onClose={() => setIsComposeOpen(false)} />
+          <ComposeModal 
+            onClose={() => {
+              setIsComposeOpen(false);
+              setComposeData({});
+            }} 
+            initialTo={composeData.to}
+            initialSubject={composeData.subject}
+            initialBody={composeData.body}
+          />
         )}
       </AnimatePresence>
     </div>

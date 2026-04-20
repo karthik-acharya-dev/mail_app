@@ -64,7 +64,8 @@ export const sendEmail = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'No Gmail account connected' });
     }
 
-    const receipt = await sendGmailEmail(account.id, to, subject, body);
+    const attachments = (req.files as Express.Multer.File[]) || [];
+    const receipt = await sendGmailEmail(account.id, to, subject, body, attachments);
     
     res.json({ message: 'Email sent successfully', provider_message_id: receipt.id });
   } catch (error) {

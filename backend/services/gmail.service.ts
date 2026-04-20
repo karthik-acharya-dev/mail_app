@@ -188,21 +188,60 @@ export const fetchUnsyncedEmails = async (accountId: string) => {
   return fetchedEmails;
 };
 
-export const sendGmailEmail = async (accountId: string, to: string, subject: string, bodyText: string) => {
+export const sendGmailEmail = async (
+  accountId: string, 
+  to: string, 
+  subject: string, 
+  bodyText: string, 
+  attachments: Express.Multer.File[] = []
+) => {
   const { oAuth2Client } = await getUserOAuthClient(accountId);
   const gmail = google.gmail({ version: 'v1', auth: oAuth2Client });
 
   const utf8Subject = `=?utf-8?B?${Buffer.from(subject).toString('base64')}?=`;
-  const messageParts = [
-    `To: ${to}`,
-    'Content-Type: text/plain; charset=utf-8',
-    'MIME-Version: 1.0',
-    `Subject: ${utf8Subject}`,
-    '',
-    bodyText,
-  ];
+  const boundary = `__boundary_${Date.now()}__`;
+  
+  let message = "";
 
-  const message = messageParts.join('\n');
+  if (attachments.length === 0) {
+    const messageParts = [
+      `To: ${to}`,
+      'Content-Type: text/plain; charset=utf-8',
+      'MIME-Version: 1.0',
+      `Subject: ${utf8Subject}`,
+      '',
+      bodyText,
+    ];
+    message = messageParts.join('\n');
+  } else {
+    const messageParts = [
+      `To: ${to}`,
+      `Subject: ${utf8Subject}`,
+      'MIME-Version: 1.0',
+      `Content-Type: multipart/mixed; boundary="${boundary}"`,
+      '',
+      `--${boundary}`,
+      'Content-Type: text/plain; charset=utf-8',
+      'Content-Transfer-Encoding: 7bit',
+      '',
+      bodyText,
+      '',
+    ];
+
+    for (const file of attachments) {
+      messageParts.push(`--${boundary}`);
+      messageParts.push(`Content-Type: ${file.mimetype}; name="${file.originalname}"`);
+      messageParts.push(`Content-Transfer-Encoding: base64`);
+      messageParts.push(`Content-Disposition: attachment; filename="${file.originalname}"`);
+      messageParts.push('');
+      messageParts.push(file.buffer.toString('base64'));
+      messageParts.push('');
+    }
+
+    messageParts.push(`--${boundary}--`);
+    message = messageParts.join('\n');
+  }
+
   const encodedMessage = Buffer.from(message)
     .toString('base64')
     .replace(/\+/g, '-')
