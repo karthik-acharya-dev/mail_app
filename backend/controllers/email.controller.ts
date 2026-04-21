@@ -13,10 +13,18 @@ export const getEmails = async (req: Request, res: Response) => {
       .eq('user_id', userId);
 
     if (folder === 'sent') {
-      query = query.contains('labels', ['SENT']);
+      query = query.contains('labels', ['SENT']).not('labels', 'cs', '{"TRASH"}');
+    } else if (folder === 'drafts') {
+      query = query.contains('labels', ['DRAFT']).not('labels', 'cs', '{"TRASH"}');
+    } else if (folder === 'starred') {
+      query = query.contains('labels', ['STARRED']).not('labels', 'cs', '{"TRASH"}');
+    } else if (folder === 'trash') {
+      query = query.contains('labels', ['TRASH']);
+    } else if (folder === 'all') {
+      query = query.not('labels', 'cs', '{"TRASH"}');
     } else {
-      // Default to inbox: anything in INBOX or not explicitly SENT
-      query = query.contains('labels', ['INBOX']);
+      // Default to inbox
+      query = query.contains('labels', ['INBOX']).not('labels', 'cs', '{"TRASH"}');
     }
 
     const { data: emails, error } = await query
@@ -54,10 +62,55 @@ export const syncEmails = async (req: Request, res: Response) => {
   }
 };
 
+export const saveDraft = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user.id;
+    const { to, subject, body, draftId } = req.body;
+
+    // Find the primary gmail account
+    const { data: account, error: accError } = await supabase
+      .from('provider_accounts')
+      .select('id, email_address')
+      .eq('user_id', userId)
+      .eq('provider_type', 'gmail')
+      .single();
+
+    if (accError || !account) {
+      return res.status(404).json({ error: 'No Gmail account connected' });
+    }
+
+    const draftData = {
+      user_id: userId,
+      account_id: account.id,
+      subject: subject || '(No Subject)',
+      sender: account.email_address,
+      recipients: { to: [to].filter(Boolean) },
+      snippet: (body || '').substring(0, 200),
+      body_plain: body || '',
+      labels: ['DRAFT'],
+      is_read: true,
+      timestamp: new Date().toISOString(),
+      provider_message_id: draftId || `local-draft-${Date.now()}`
+    };
+
+    const { data, error } = await supabase
+      .from('emails')
+      .upsert(draftData, { onConflict: 'user_id, provider_message_id' })
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json(data);
+  } catch (error) {
+    console.error('Save Draft Error:', error);
+    res.status(500).json({ error: 'Failed to save draft' });
+  }
+};
+
 export const sendEmail = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
-    const { to, subject, body } = req.body;
+    const { to, subject, body, draftId } = req.body;
     
     if (!to || !subject || !body) {
       return res.status(400).json({ error: 'Missing required fields' });
@@ -78,6 +131,11 @@ export const sendEmail = async (req: Request, res: Response) => {
     const attachments = (req.files as Express.Multer.File[]) || [];
     const receipt = await sendGmailEmail(account.id, to, subject, body, attachments);
     
+    // If it was a draft, delete it
+    if (draftId) {
+      await supabase.from('emails').delete().eq('user_id', userId).eq('provider_message_id', draftId);
+    }
+
     // Save to database so it shows up in "Sent" folder immediately
     await supabase.from('emails').insert({
       user_id: userId,
@@ -146,5 +204,108 @@ export const searchEmails = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Search Error:', error);
     res.status(500).json({ error: 'Failed to search emails' });
+  }
+};
+
+export const toggleStar = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user.id;
+    const { emailId } = req.body;
+
+    const { data: email, error: fetchError } = await supabase
+      .from('emails')
+      .select('labels')
+      .eq('id', emailId)
+      .eq('user_id', userId)
+      .single();
+
+    if (fetchError || !email) {
+      return res.status(404).json({ error: 'Email not found' });
+    }
+
+    let labels = email.labels || [];
+    if (labels.includes('STARRED')) {
+      labels = labels.filter((l: string) => l !== 'STARRED');
+    } else {
+      labels = [...labels, 'STARRED'];
+    }
+
+    const { error: updateError } = await supabase
+      .from('emails')
+      .update({ labels })
+      .eq('id', emailId)
+      .eq('user_id', userId);
+
+    if (updateError) throw updateError;
+    res.json({ success: true, isStarred: labels.includes('STARRED') });
+  } catch (error) {
+    console.error('Toggle Star Error:', error);
+    res.status(500).json({ error: 'Failed to toggle star' });
+  }
+};
+
+export const deleteEmail = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user.id;
+    const { emailId } = req.body;
+
+    const { data: email, error: fetchError } = await supabase
+      .from('emails')
+      .select('labels')
+      .eq('id', emailId)
+      .eq('user_id', userId)
+      .single();
+
+    if (fetchError || !email) {
+      return res.status(404).json({ error: 'Email not found' });
+    }
+
+    let labels = email.labels || [];
+    
+    // If it's already in Trash, or if user wants permanent delete
+    if (labels.includes('TRASH')) {
+      const { error: deleteError } = await supabase
+        .from('emails')
+        .delete()
+        .eq('id', emailId)
+        .eq('user_id', userId);
+      
+      if (deleteError) throw deleteError;
+      return res.json({ success: true, permanent: true });
+    }
+
+    // Move to trash
+    labels = [...labels.filter((l: string) => !['INBOX', 'SENT', 'DRAFT'].includes(l)), 'TRASH'];
+
+    const { error: updateError } = await supabase
+      .from('emails')
+      .update({ labels })
+      .eq('id', emailId)
+      .eq('user_id', userId);
+
+    if (updateError) throw updateError;
+    res.json({ success: true, trashed: true });
+  } catch (error) {
+    console.error('Delete Email Error:', error);
+    res.status(500).json({ error: 'Failed to delete email' });
+  }
+};
+
+export const toggleReadStatus = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user.id;
+    const { emailId, isRead } = req.body;
+
+    const { error } = await supabase
+      .from('emails')
+      .update({ is_read: isRead })
+      .eq('id', emailId)
+      .eq('user_id', userId);
+
+    if (error) throw error;
+    res.json({ success: true, is_read: isRead });
+  } catch (error) {
+    console.error('Toggle Read Status Error:', error);
+    res.status(500).json({ error: 'Failed to update read status' });
   }
 };
