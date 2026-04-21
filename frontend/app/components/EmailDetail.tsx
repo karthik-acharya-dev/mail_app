@@ -1,9 +1,10 @@
 "use client";
 import { format } from "date-fns";
-import { ArrowLeft, UserPlus, Reply, Forward, Star, MoreVertical, X, Search, Check, Plus, Loader2, Paperclip } from "lucide-react";
+import { ArrowLeft, UserPlus, Reply, Forward, Star, MoreVertical, X, Search, Check, Plus, Loader2, Paperclip, Trash2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useRef } from "react";
 import { clientApi } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 interface EmailDetailProps {
   email: any;
@@ -11,9 +12,11 @@ interface EmailDetailProps {
   onLinkToClient: (clientId: string) => void;
   onReply?: (email: any) => void;
   onForward?: (email: any) => void;
+  onToggleStar?: () => void;
+  onDelete?: () => void;
 }
 
-export default function EmailDetail({ email, onClose, onLinkToClient, onReply, onForward }: EmailDetailProps) {
+export default function EmailDetail({ email, onClose, onLinkToClient, onReply, onForward, onToggleStar, onDelete }: EmailDetailProps) {
   const [showCRM, setShowCRM] = useState(false);
   const [clients, setClients] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -138,8 +141,23 @@ export default function EmailDetail({ email, onClose, onLinkToClient, onReply, o
               </div>
             )}
             <div className="h-4 w-[1px] bg-border mx-1" />
-            <button className="p-2 rounded-lg hover:bg-accent text-muted-foreground">
-              <Star className="w-4 h-4" />
+            <button 
+              onClick={onToggleStar}
+              className={cn(
+                "p-2 rounded-lg transition-all",
+                email.labels?.includes('STARRED') 
+                  ? "text-yellow-500 bg-yellow-500/10 hover:bg-yellow-500/20" 
+                  : "hover:bg-accent text-muted-foreground"
+              )}
+            >
+              <Star className={cn("w-4 h-4", email.labels?.includes('STARRED') && "fill-current")} />
+            </button>
+            <button 
+              onClick={onDelete}
+              className="p-2 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
+              title={email.labels?.includes('TRASH') ? "Delete Permanently" : "Move to Trash"}
+            >
+              <Trash2 className="w-4 h-4" />
             </button>
             <button className="p-2 rounded-lg hover:bg-accent text-muted-foreground">
               <MoreVertical className="w-4 h-4" />

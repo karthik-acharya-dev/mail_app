@@ -1,5 +1,5 @@
 "use client";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
 import { X, Send, Paperclip, Loader2 } from "lucide-react";
 import { emailApi } from "@/lib/api";
@@ -10,20 +10,49 @@ interface ComposeModalProps {
   initialTo?: string;
   initialSubject?: string;
   initialBody?: string;
+  initialDraftId?: string;
 }
 
 export default function ComposeModal({ 
   onClose, 
   initialTo = "", 
   initialSubject = "", 
-  initialBody = "" 
+  initialBody = "",
+  initialDraftId = ""
 }: ComposeModalProps) {
   const [to, setTo] = useState(initialTo);
   const [subject, setSubject] = useState(initialSubject);
   const [body, setBody] = useState(initialBody);
   const [isSending, setIsSending] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [draftId, setDraftId] = useState(initialDraftId);
   const [attachments, setAttachments] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleSaveDraft = async () => {
+    if (isSending) return;
+    setIsSaving(true);
+    try {
+      const draft = await emailApi.saveDraft({ to, subject, body, draftId });
+      setDraftId(draft.provider_message_id);
+    } catch (error) {
+      console.error("Failed to auto-save draft:", error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Auto-save logic
+  useEffect(() => {
+    // Don't auto-save if everything is empty
+    if (!to && !subject && !body) return;
+
+    const timer = setTimeout(() => {
+      handleSaveDraft();
+    }, 2000); // Save after 2 seconds of inactivity
+
+    return () => clearTimeout(timer);
+  }, [to, subject, body, draftId]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -42,7 +71,7 @@ export default function ComposeModal({
     
     setIsSending(true);
     try {
-      await emailApi.sendEmail({ to, subject, body, attachments });
+      await emailApi.sendEmail({ to, subject, body, attachments, draftId });
       toast.success("Email sent successfully!");
       onClose();
     } catch (error) {
@@ -129,14 +158,23 @@ export default function ComposeModal({
           
           {/* Footer Actions */}
           <div className="px-4 py-3 border-t border-border bg-secondary/20 flex items-center justify-between">
-            <button
-              type="submit"
-              disabled={isSending || !to}
-              className="px-6 py-2 bg-primary text-primary-foreground rounded-lg font-medium text-sm flex items-center gap-2 hover:bg-primary/90 transition-colors disabled:opacity-50"
-            >
-              {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-              Send
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="submit"
+                disabled={isSending || !to}
+                className="px-6 py-2 bg-primary text-primary-foreground rounded-lg font-medium text-sm flex items-center gap-2 hover:bg-primary/90 transition-colors disabled:opacity-50"
+              >
+                {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                Send
+              </button>
+              
+              {isSaving && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground animate-pulse ml-2">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Saving draft...
+                </div>
+              )}
+            </div>
             
             <input
               type="file"

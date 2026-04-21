@@ -2,15 +2,18 @@
 import { formatDistanceToNow } from "date-fns";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { User, Tag } from "lucide-react";
+import { User, Tag, Star, Trash2, Mail, MailOpen } from "lucide-react";
 
 interface EmailListProps {
   emails: any[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  onToggleStar: (id: string) => void;
+  onDelete: (id: string) => void;
+  onToggleRead: (id: string, currentStatus: boolean) => void;
 }
 
-export default function EmailList({ emails, selectedId, onSelect }: EmailListProps) {
+export default function EmailList({ emails, selectedId, onSelect, onToggleStar, onDelete, onToggleRead }: EmailListProps) {
   if (emails.length === 0) {
     return (
       <div className="p-8 text-center text-muted-foreground">
@@ -47,9 +50,14 @@ export default function EmailList({ emails, selectedId, onSelect }: EmailListPro
               className={cn(
                 "w-full text-left p-4 transition-all flex flex-col gap-1 relative overflow-hidden group email-card-hover border-l-2",
                 isSelected ? "bg-accent/50 border-primary" : "border-transparent",
-                isUnread && !isSelected ? "bg-primary/5" : ""
+                isUnread && !isSelected ? "bg-primary/5 shadow-inner" : ""
               )}
             >
+              {isUnread && (
+                <div className="absolute top-0 right-0 p-1 opacity-20">
+                  <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                </div>
+              )}
               <div className="flex items-center justify-between w-full mb-0.5">
                 <div className="flex items-center gap-2 overflow-hidden">
                   {isUnread && (
@@ -61,6 +69,41 @@ export default function EmailList({ emails, selectedId, onSelect }: EmailListPro
                   )} title={senderName}>
                     {senderName}
                   </span>
+                  
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleStar(email.id);
+                    }}
+                    className={cn(
+                      "transition-all ml-1 opacity-0 group-hover:opacity-100",
+                      email.labels?.includes('STARRED') ? "opacity-100 text-yellow-500" : "text-muted-foreground/40 hover:text-yellow-500"
+                    )}
+                  >
+                    <Star className={cn("w-3.5 h-3.5", email.labels?.includes('STARRED') && "fill-current")} />
+                  </button>
+
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDelete(email.id);
+                    }}
+                    className="transition-all ml-1 opacity-0 group-hover:opacity-100 text-muted-foreground/40 hover:text-destructive"
+                    title="Delete"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleRead(email.id, !!email.is_read);
+                    }}
+                    className="transition-all ml-1 opacity-0 group-hover:opacity-100 text-muted-foreground/40 hover:text-primary"
+                    title={email.is_read ? "Mark as unread" : "Mark as read"}
+                  >
+                    {email.is_read ? <Mail className="w-3.5 h-3.5" /> : <MailOpen className="w-3.5 h-3.5" />}
+                  </button>
                 </div>
                 <span className="text-[10px] uppercase font-medium text-muted-foreground/70 whitespace-nowrap ml-2">
                   {formatDistanceToNow(new Date(email.timestamp), { addSuffix: true })}

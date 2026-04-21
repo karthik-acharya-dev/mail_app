@@ -41,6 +41,11 @@ export const emailApi = {
       },
     }).then(res => res.data);
   },
+  saveDraft: (data: { to?: string; subject?: string; body?: string; draftId?: string }) => 
+    api.post('/emails/save-draft', data).then(res => res.data),
+  toggleStar: (emailId: string) => api.post('/emails/toggle-star', { emailId }).then(res => res.data),
+  deleteEmail: (emailId: string) => api.post('/emails/delete', { emailId }).then(res => res.data),
+  markReadStatus: (emailId: string, isRead: boolean) => api.post('/emails/toggle-read', { emailId, isRead }).then(res => res.data),
   linkToClient: (emailId: string, clientId: string) => api.post('/emails/link', { emailId, clientId }).then(res => res.data),
   searchEmails: (query: string) => api.get(`/emails/search?q=${query}`).then(res => res.data),
 };

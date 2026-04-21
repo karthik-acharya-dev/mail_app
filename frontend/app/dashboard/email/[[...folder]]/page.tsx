@@ -20,7 +20,7 @@ export default function EmailPage() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isConnected, setIsConnected] = useState<boolean | null>(null);
-  const [composeData, setComposeData] = useState<{ to?: string; subject?: string; body?: string }>({});
+  const [composeData, setComposeData] = useState<{ to?: string; subject?: string; body?: string, draftId?: string }>({});
   
   const searchParams = useSearchParams();
   const query = searchParams.get("q");
@@ -66,6 +66,19 @@ export default function EmailPage() {
   }, [loadEmails, isConnected]);
 
   const selectedEmail = emails.find(e => e.id === selectedEmailId);
+
+  useEffect(() => {
+    if (selectedEmail && selectedEmail.labels?.includes('DRAFT')) {
+      setComposeData({
+        to: selectedEmail.recipients?.to?.[0] || "",
+        subject: selectedEmail.subject,
+        body: selectedEmail.body_plain || selectedEmail.snippet,
+        draftId: selectedEmail.provider_message_id
+      });
+      setIsComposeOpen(true);
+      setSelectedEmailId(null); // Reset selection so draft can be re-opened if closed
+    }
+  }, [selectedEmailId, selectedEmail]);
 
   const handleSync = async () => {
     if (isSyncing) return;
@@ -154,10 +167,53 @@ export default function EmailPage() {
           ) : emails.length === 0 ? (
              <div className="flex flex-col items-center justify-center h-64 opacity-30">
                <Mail className="w-12 h-12 mb-2" />
-               <p className="text-sm">{folder === 'sent' ? 'No sent emails' : 'Inbox is empty'}</p>
+               <p className="text-sm">
+                 {folder === 'sent' ? 'No sent emails' : 
+                  folder === 'drafts' ? 'No drafts' :
+                  folder === 'starred' ? 'No starred messages' :
+                  folder === 'trash' ? 'Trash is empty' :
+                  folder === 'all' ? 'No messages' : 'Inbox is empty'}
+               </p>
              </div>
           ) : (
-            <EmailList emails={emails} selectedId={selectedEmailId} onSelect={setSelectedEmailId} />
+            <EmailList 
+              emails={emails} 
+              selectedId={selectedEmailId} 
+              onSelect={setSelectedEmailId} 
+              onToggleStar={async (id) => {
+                try {
+                  await emailApi.toggleStar(id);
+                  await loadEmails();
+                } catch (error) {
+                  console.error("Star toggle failed:", error);
+                }
+              }}
+              onDelete={async (id) => {
+                const targetEmail = emails.find(e => e.id === id);
+                const isPermanent = targetEmail?.labels?.includes('TRASH');
+                const confirmMsg = isPermanent 
+                  ? "This will permanently delete this email. Continue?" 
+                  : "Move this email to trash?";
+
+                if (!confirm(confirmMsg)) return;
+
+                try {
+                  await emailApi.deleteEmail(id);
+                  if (selectedEmailId === id) setSelectedEmailId(null);
+                  await loadEmails();
+                } catch (error) {
+                  console.error("Deletion failed:", error);
+                }
+              }}
+              onToggleRead={async (id, currentStatus) => {
+                try {
+                  await emailApi.markReadStatus(id, !currentStatus);
+                  await loadEmails();
+                } catch (error) {
+                  console.error("Read status toggle failed:", error);
+                }
+              }}
+            />
           )}
         </div>
       </div>
@@ -169,7 +225,13 @@ export default function EmailPage() {
             <div className="w-20 h-20 rounded-3xl bg-accent flex items-center justify-center mb-6 shadow-inner ring-1 ring-border/50">
               <Mail className="w-10 h-10 opacity-30" />
             </div>
-            <h3 className="text-lg font-semibold text-foreground/80 mb-1">Your {folder === 'sent' ? 'Sent Messages' : 'Inbox'}</h3>
+            <h3 className="text-lg font-semibold text-foreground/80 mb-1">
+              Your {folder === 'sent' ? 'Sent Messages' : 
+                    folder === 'drafts' ? 'Drafts' :
+                    folder === 'starred' ? 'Starred Messages' :
+                    folder === 'trash' ? 'Trashed Messages' :
+                    folder === 'all' ? 'All Mail' : 'Inbox'}
+            </h3>
             <p className="text-sm opacity-60 px-8">Select an email from the list to view its contents and link it to your CRM database.</p>
           </div>
         ) : (
@@ -178,6 +240,32 @@ export default function EmailPage() {
             onClose={() => setSelectedEmailId(null)}
             onReply={handleReply}
             onForward={handleForward}
+            onToggleStar={async () => {
+              if (!selectedEmailId) return;
+              try {
+                await emailApi.toggleStar(selectedEmailId);
+                await loadEmails();
+              } catch (error) {
+                console.error("Star toggle failed:", error);
+              }
+            }}
+            onDelete={async () => {
+              if (!selectedEmailId) return;
+              const isPermanent = selectedEmail.labels?.includes('TRASH');
+              const confirmMsg = isPermanent 
+                ? "This will permanently delete this email. Continue?" 
+                : "Move this email to trash?";
+              
+              if (!confirm(confirmMsg)) return;
+
+              try {
+                await emailApi.deleteEmail(selectedEmailId);
+                setSelectedEmailId(null);
+                await loadEmails();
+              } catch (error) {
+                console.error("Deletion failed:", error);
+              }
+            }}
             onLinkToClient={async (clientId) => {
               try {
                 await emailApi.linkToClient(selectedEmailId, clientId);
@@ -190,6 +278,15 @@ export default function EmailPage() {
         )}
       </div>
 
+      {/* Auto-mark as read logic */}
+      <EmailReadHandler 
+        selectedEmail={selectedEmail} 
+        onMarkRead={async (id) => {
+          await emailApi.markReadStatus(id, true);
+          loadEmails();
+        }} 
+      />
+
       {/* Compose Modal */}
       <AnimatePresence>
         {isComposeOpen && (
@@ -201,9 +298,19 @@ export default function EmailPage() {
             initialTo={composeData.to}
             initialSubject={composeData.subject}
             initialBody={composeData.body}
+            initialDraftId={composeData.draftId}
           />
         )}
       </AnimatePresence>
     </div>
   );
+}
+
+function EmailReadHandler({ selectedEmail, onMarkRead }: { selectedEmail: any, onMarkRead: (id: string) => void }) {
+  useEffect(() => {
+    if (selectedEmail && !selectedEmail.is_read) {
+      onMarkRead(selectedEmail.id);
+    }
+  }, [selectedEmail, onMarkRead]);
+  return null;
 }
