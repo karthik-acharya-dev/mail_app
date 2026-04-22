@@ -1,10 +1,26 @@
 "use client";
 import { format } from "date-fns";
-import { ArrowLeft, UserPlus, Reply, Forward, Star, MoreVertical, X, Search, Check, Plus, Loader2, Paperclip, Trash2 } from "lucide-react";
+import { ArrowLeft, UserPlus, Reply, Forward, Star, MoreVertical, X, Search, Check, Plus, Loader2, Paperclip, Trash2, Download, File, FileText, Image as ImageIcon } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useRef } from "react";
-import { clientApi } from "@/lib/api";
+import { clientApi, emailApi } from "@/lib/api";
+import { supabase } from "@/lib/supabase";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+
+const formatFileSize = (bytes: number) => {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
+
+const getFileIcon = (mimeType: string) => {
+  if (mimeType?.startsWith('image/')) return <ImageIcon className="w-5 h-5 text-blue-500" />;
+  if (mimeType === 'application/pdf') return <FileText className="w-5 h-5 text-red-500" />;
+  return <File className="w-5 h-5 text-gray-500" />;
+};
 
 interface EmailDetailProps {
   email: any;
@@ -17,12 +33,45 @@ interface EmailDetailProps {
 }
 
 export default function EmailDetail({ email, onClose, onLinkToClient, onReply, onForward, onToggleStar, onDelete }: EmailDetailProps) {
+  console.log("[EmailDetail] Rendering email data:", email);
   const [showCRM, setShowCRM] = useState(false);
   const [clients, setClients] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [linkingId, setLinkingId] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  const handleDownload = async (emailId: string, attachmentId: string, filename: string) => {
+    setDownloadingId(attachmentId);
+    try {
+      const url = emailApi.getAttachmentUrl(emailId, attachmentId);
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${session?.access_token}`
+        }
+      });
+      
+      if (!response.ok) throw new Error('Download failed');
+      
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (error) {
+      console.error('Download error:', error);
+      toast.error("Failed to download attachment");
+    } finally {
+      setDownloadingId(null);
+    }
+  };
 
   useEffect(() => {
     if (showCRM) {
@@ -162,6 +211,14 @@ export default function EmailDetail({ email, onClose, onLinkToClient, onReply, o
             <button className="p-2 rounded-lg hover:bg-accent text-muted-foreground">
               <MoreVertical className="w-4 h-4" />
             </button>
+            <div className="h-4 w-[1px] bg-border mx-1" />
+            <button 
+              onClick={onClose}
+              className="p-2 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-all"
+              title="Close Preview"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
         </div>
 
@@ -197,9 +254,51 @@ export default function EmailDetail({ email, onClose, onLinkToClient, onReply, o
               onLoad={handleIframeLoad}
               className="w-full border-none pointer-events-auto"
               title="Email Body"
-              sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin"
+              sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts"
             />
           </div>
+
+          {/* Attachments Section */}
+          {email.has_attachments && email.attachments && email.attachments.length > 0 && (
+            <div className="mt-8 pt-8 border-t border-border/50">
+              <h3 className="text-sm font-bold mb-4 flex items-center gap-2">
+                <Paperclip className="w-4 h-4" />
+                Attachments ({email.attachments.length})
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {email.attachments.map((attachment: any, index: number) => (
+                  <div 
+                    key={index}
+                    className="p-3 rounded-xl border border-border bg-accent/5 hover:bg-accent/10 transition-all flex items-center justify-between group"
+                  >
+                    <div className="flex items-center gap-3 overflow-hidden">
+                      {getFileIcon(attachment.mimeType)}
+                      <div className="overflow-hidden">
+                        <div className="text-sm font-bold truncate" title={attachment.filename}>
+                          {attachment.filename}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground uppercase font-medium">
+                          {formatFileSize(attachment.size || 0)} • {attachment.mimeType?.split('/')[1] || 'FILE'}
+                        </div>
+                      </div>
+                    </div>
+                    <button 
+                      disabled={downloadingId === attachment.attachmentId}
+                      onClick={() => handleDownload(email.id, attachment.attachmentId, attachment.filename)}
+                      className="p-2 rounded-lg bg-background border border-border hover:border-primary hover:text-primary transition-all opacity-0 group-hover:opacity-100 disabled:opacity-50"
+                      title="Download"
+                    >
+                      {downloadingId === attachment.attachmentId ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Download className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           
           <div className="mt-12 pt-8 border-t border-border/50">
             <div className="flex items-center gap-4">

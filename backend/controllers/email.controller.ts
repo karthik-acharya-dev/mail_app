@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { supabase } from '../utils/supabase';
-import { fetchUnsyncedEmails, sendGmailEmail } from '../services/gmail.service';
+import { fetchUnsyncedEmails, sendGmailEmail, getAttachment } from '../services/gmail.service';
 
 export const getEmails = async (req: Request, res: Response) => {
   try {
@@ -13,18 +13,19 @@ export const getEmails = async (req: Request, res: Response) => {
       .eq('user_id', userId);
 
     if (folder === 'sent') {
-      query = query.contains('labels', ['SENT']).not('labels', 'cs', '{"TRASH"}');
+      query = query.filter('labels', 'cs', '{"SENT"}').filter('labels', 'not.cs', '{"TRASH"}');
     } else if (folder === 'drafts') {
-      query = query.contains('labels', ['DRAFT']).not('labels', 'cs', '{"TRASH"}');
+      query = query.filter('labels', 'cs', '{"DRAFT"}').filter('labels', 'not.cs', '{"TRASH"}');
     } else if (folder === 'starred') {
-      query = query.contains('labels', ['STARRED']).not('labels', 'cs', '{"TRASH"}');
+      query = query.filter('labels', 'cs', '{"STARRED"}').filter('labels', 'not.cs', '{"TRASH"}');
+    } else if (folder === 'spam') {
+      query = query.filter('labels', 'cs', '{"SPAM"}');
     } else if (folder === 'trash') {
-      query = query.contains('labels', ['TRASH']);
+      query = query.filter('labels', 'cs', '{"TRASH"}');
     } else if (folder === 'all') {
-      query = query.not('labels', 'cs', '{"TRASH"}');
+      query = query.filter('labels', 'not.cs', '{"TRASH"}');
     } else {
-      // Default to inbox
-      query = query.contains('labels', ['INBOX']).not('labels', 'cs', '{"TRASH"}');
+      query = query.filter('labels', 'cs', '{"INBOX"}').filter('labels', 'not.cs', '{"TRASH"}').filter('labels', 'not.cs', '{"SPAM"}');
     }
 
     const { data: emails, error } = await query
@@ -32,6 +33,7 @@ export const getEmails = async (req: Request, res: Response) => {
       .limit(50);
 
     if (error) throw error;
+    console.log(`[getEmails] Returning ${emails.length} emails. Sample attachments:`, emails.slice(0, 3).map(e => ({ id: e.id, hasAttachments: e.has_attachments, attachmentCount: e.attachments?.length })));
     res.json(emails);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch emails' });
@@ -307,5 +309,47 @@ export const toggleReadStatus = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Toggle Read Status Error:', error);
     res.status(500).json({ error: 'Failed to update read status' });
+  }
+};
+
+export const downloadAttachment = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user.id;
+    const { emailId, attachmentId } = req.query;
+
+    if (!emailId || !attachmentId) {
+      return res.status(400).json({ error: 'Missing emailId or attachmentId' });
+    }
+
+    const { data: email, error: fetchError } = await supabase
+      .from('emails')
+      .select('account_id, provider_message_id, attachments')
+      .eq('id', emailId)
+      .eq('user_id', userId)
+      .single();
+
+    if (fetchError || !email) {
+      return res.status(404).json({ error: 'Email not found' });
+    }
+
+    const attachmentMetadata = email.attachments?.find((a: any) => a.attachmentId === attachmentId);
+    if (!attachmentMetadata) {
+      return res.status(404).json({ error: 'Attachment metadata not found' });
+    }
+
+    const attachmentData = await getAttachment(email.account_id, email.provider_message_id, attachmentId as string);
+    
+    if (!attachmentData.data) {
+      return res.status(404).json({ error: 'Attachment data not found' });
+    }
+
+    const buffer = Buffer.from(attachmentData.data, 'base64');
+    
+    res.setHeader('Content-Type', attachmentMetadata.mimeType || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${attachmentMetadata.filename}"`);
+    res.send(buffer);
+  } catch (error) {
+    console.error('Download Attachment Error:', error);
+    res.status(500).json({ error: 'Failed to download attachment' });
   }
 };

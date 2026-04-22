@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Mail, Users, Settings, LogOut, Search, Send, FileText, Archive, Star, Trash2 } from "lucide-react";
+import { Mail, Users, Settings, LogOut, Search, Send, FileText, Archive, Star, Trash2, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
@@ -11,6 +11,7 @@ const navItems = [
   { icon: Archive, label: "All Mail", href: "/dashboard/email/all" },
   { icon: Send, label: "Sent", href: "/dashboard/email/sent" },
   { icon: FileText, label: "Drafts", href: "/dashboard/email/drafts" },
+  { icon: ShieldAlert, label: "Spam", href: "/dashboard/email/spam" },
   { icon: Trash2, label: "Trash", href: "/dashboard/email/trash" },
   { icon: Users, label: "Clients", href: "/dashboard/clients" },
   { icon: Settings, label: "Settings", href: "/dashboard/settings" },

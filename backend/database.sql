@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS public.emails (
   labels TEXT[],
   is_read BOOLEAN DEFAULT FALSE,
   has_attachments BOOLEAN DEFAULT FALSE,
+  attachments JSONB DEFAULT '[]'::JSONB,
   timestamp TIMESTAMP WITH TIME ZONE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   search_vector TSVECTOR GENERATED ALWAYS AS (
