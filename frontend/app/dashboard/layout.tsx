@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Mail, Users, Settings, LogOut, Search, Send, FileText, Archive, Star, Trash2, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/lib/supabase";
 
 const navItems = [
   { icon: Mail, label: "Inbox", href: "/dashboard/email" },
@@ -37,6 +38,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   };
 
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.push("/");
+  };
+
   if (!mounted) return null;
 
   return (
@@ -55,10 +61,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         <nav className="flex-1 px-4 py-4 space-y-1">
           {navItems.map((item) => {
-            const isActive = item.href === "/dashboard/email" 
+            const isActive = item.href === "/dashboard/email"
               ? pathname === "/dashboard/email" || pathname === "/dashboard/email/"
               : pathname === item.href;
-            
+
             return (
               <Link
                 key={item.href}
@@ -81,8 +87,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </nav>
 
         <div className="p-4 mt-auto">
-          <button className="flex items-center gap-3 px-4 py-3 rounded-xl w-full hover:bg-destructive/10 text-destructive transition-colors">
-            <LogOut className="w-5 h-5" />
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-3 px-4 py-3 rounded-xl w-full hover:bg-destructive/10 text-destructive transition-colors group"
+          >
+            <LogOut className="w-5 h-5 transition-transform group-hover:-translate-x-1" />
             <span className="font-medium">Logout</span>
           </button>
         </div>
@@ -104,7 +113,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               />
             </div>
           </form>
-          
+
           <div className="flex items-center gap-4">
             <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-primary to-blue-500 flex items-center justify-center text-white font-bold text-sm shadow-sm ring-2 ring-background">
               U
