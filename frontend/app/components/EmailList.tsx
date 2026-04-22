@@ -45,10 +45,18 @@ export default function EmailList({ emails, selectedId, onSelect, onToggleStar, 
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.2, delay: i * 0.03 }}
           >
-            <button
+            <div
+              role="button"
+              tabIndex={0}
               onClick={() => onSelect(email.id)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  onSelect(email.id);
+                }
+              }}
               className={cn(
-                "w-full text-left p-4 transition-all flex flex-col gap-1 relative overflow-hidden group email-card-hover border-l-2",
+                "w-full text-left p-4 transition-all flex flex-col gap-1 relative overflow-hidden group email-card-hover border-l-2 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary",
                 isSelected ? "bg-accent/50 border-primary" : "border-transparent",
                 isUnread && !isSelected ? "bg-primary/5 shadow-inner" : ""
               )}
@@ -138,7 +146,7 @@ export default function EmailList({ emails, selectedId, onSelect, onToggleStar, 
                   </div>
                 ))}
               </div>
-            </button>
+            </div>
           </motion.li>
         );
       })}

@@ -48,6 +48,7 @@ export const emailApi = {
   markReadStatus: (emailId: string, isRead: boolean) => api.post('/emails/toggle-read', { emailId, isRead }).then(res => res.data),
   linkToClient: (emailId: string, clientId: string) => api.post('/emails/link', { emailId, clientId }).then(res => res.data),
   searchEmails: (query: string) => api.get(`/emails/search?q=${query}`).then(res => res.data),
+  getAttachmentUrl: (emailId: string, attachmentId: string) => `${API_URL}/emails/attachment?emailId=${emailId}&attachmentId=${attachmentId}`,
 };
 
 export const clientApi = {
