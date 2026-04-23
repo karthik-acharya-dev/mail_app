@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Mail, Users, Settings, LogOut, Search, Send, FileText, Archive, Star, Trash2, ShieldAlert } from "lucide-react";
+import { Mail, Users, Settings, LogOut, Search, Send, FileText, Archive, Star, Trash2, ShieldAlert, StickyNote, Calendar } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 
@@ -15,6 +15,8 @@ const navItems = [
   { icon: ShieldAlert, label: "Spam", href: "/dashboard/email/spam" },
   { icon: Trash2, label: "Trash", href: "/dashboard/email/trash" },
   { icon: Users, label: "Clients", href: "/dashboard/clients" },
+  { icon: StickyNote, label: "Notes", href: "/dashboard/notes" },
+  { icon: Calendar, label: "Calendar", href: "/dashboard/calendar" },
   { icon: Settings, label: "Settings", href: "/dashboard/settings" },
 ];
 
