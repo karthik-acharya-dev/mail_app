@@ -146,144 +146,107 @@ export const fetchUnsyncedEmails = async (accountId: string) => {
   const { oAuth2Client, userId } = await getUserOAuthClient(accountId);
   const gmail = google.gmail({ version: 'v1', auth: oAuth2Client });
 
-  // Pass 1: Get latest messages
-  const listResponse = await gmail.users.messages.list({
-    userId: 'me',
-    maxResults: 100,
-    includeSpamTrash: true,
-  });
-
-  // Pass 2: Specifically targeted fetch for Trash
-  const trashResponse = await gmail.users.messages.list({
-    userId: 'me',
-    q: 'label:TRASH',
-    maxResults: 50,
-    includeSpamTrash: true,
-  });
-
-  // Pass 3: Specifically targeted fetch for Drafts
-  const draftResponse = await gmail.users.messages.list({
-    userId: 'me',
-    q: 'label:DRAFT',
-    maxResults: 50,
-    includeSpamTrash: true,
-  });
-
-  // Pass 4: Specifically targeted fetch for Spam
-  const spamResponse = await gmail.users.messages.list({
-    userId: 'me',
-    q: 'label:SPAM',
-    maxResults: 50,
-    includeSpamTrash: true,
-  });
-
-  // Pass 5: Specifically targeted fetch for Starred
-  const starredResponse = await gmail.users.messages.list({
-    userId: 'me',
-    q: 'label:STARRED',
-    maxResults: 50,
-    includeSpamTrash: false,
-  });
+  // 1. Get all message references in parallel streams
+  const [listRes, trashRes, draftRes, spamRes, starredRes] = await Promise.all([
+    gmail.users.messages.list({ userId: 'me', maxResults: 100, includeSpamTrash: true }),
+    gmail.users.messages.list({ userId: 'me', q: 'label:TRASH', maxResults: 50, includeSpamTrash: true }),
+    gmail.users.messages.list({ userId: 'me', q: 'label:DRAFT', maxResults: 50, includeSpamTrash: true }),
+    gmail.users.messages.list({ userId: 'me', q: 'label:SPAM', maxResults: 50, includeSpamTrash: true }),
+    gmail.users.messages.list({ userId: 'me', q: 'label:STARRED', maxResults: 50, includeSpamTrash: false }),
+  ]);
 
   const allMessages = [
-    ...(listResponse.data.messages || []),
-    ...(trashResponse.data.messages || []),
-    ...(draftResponse.data.messages || []),
-    ...(spamResponse.data.messages || []),
-    ...(starredResponse.data.messages || [])
+    ...(listRes.data.messages || []),
+    ...(trashRes.data.messages || []),
+    ...(draftRes.data.messages || []),
+    ...(spamRes.data.messages || []),
+    ...(starredRes.data.messages || [])
   ];
   
-  // Remove duplicates from IDs
   const uniqueMessageIds = Array.from(new Set(allMessages.map(m => (m as any).id))).filter(Boolean);
-  console.log(`[GmailService] Found ${uniqueMessageIds.length} unique messages across Inbox, Trash, Drafts, Spam, and Starred`);
-  const fetchedEmails = [];
+  console.log(`[GmailService] Found ${uniqueMessageIds.length} unique messages to process`);
 
-  for (const messageId of uniqueMessageIds) {
-    try {
-      const { data: existing, error: fetchErr } = await supabase
-        .from('emails')
-        .select('id, attachments, has_attachments, labels')
-        .eq('provider_message_id', messageId)
-        .eq('account_id', accountId)
-        .maybeSingle();
+  // 2. Optimization: Fetch all existing message IDs in one go to see what we can skip
+  const { data: existingRecords } = await supabase
+    .from('emails')
+    .select('provider_message_id, labels')
+    .eq('account_id', accountId)
+    .in('provider_message_id', uniqueMessageIds);
 
-      if (fetchErr) {
-        console.warn(`[GmailService] Skip check failed for ${messageId}:`, fetchErr.message);
+  const existingMap = new Map(existingRecords?.map(r => [r.provider_message_id, r.labels]) || []);
+
+  // 3. Process messages in parallel chunks of 20 to avoid rate limits while being very fast
+  const CHUNK_SIZE = 20;
+  const emailsToUpsert: any[] = [];
+  
+  for (let i = 0; i < uniqueMessageIds.length; i += CHUNK_SIZE) {
+    const chunk = uniqueMessageIds.slice(i, i + CHUNK_SIZE);
+    
+    const chunkResults = await Promise.all(chunk.map(async (messageId) => {
+      try {
+        // Only fetch full data if it's new
+        if (existingMap.has(messageId as string)) return null;
+
+        const msgData = await gmail.users.messages.get({
+          userId: 'me',
+          id: messageId as string,
+        });
+
+        const payload = msgData.data.payload;
+        const headers = payload?.headers;
+        const findHeader = (name: string) => headers?.find(h => h.name.toLowerCase() === name.toLowerCase())?.value || '';
+
+        const subject = findHeader('Subject');
+        const sender = findHeader('From');
+        const recipients = {
+          to: [findHeader('To')],
+          cc: [findHeader('Cc')].filter(Boolean),
+        };
+        const timestamp = findHeader('Date') ? new Date(findHeader('Date')).toISOString() : new Date().toISOString();
+        
+        const bodyHtml = getBody(payload, 'text/html');
+        const bodyPlain = getBody(payload, 'text/plain');
+        const labels = msgData.data.labelIds || [];
+        const isRead = !labels.includes('UNREAD');
+        const attachmentsList = getAttachments(payload?.parts || []);
+
+        return {
+          user_id: userId,
+          account_id: accountId,
+          provider_message_id: messageId,
+          subject,
+          sender,
+          recipients,
+          snippet: msgData.data.snippet || '',
+          body_html: bodyHtml || bodyPlain,
+          body_plain: bodyPlain,
+          labels,
+          is_read: isRead,
+          has_attachments: attachmentsList.length > 0,
+          attachments: attachmentsList,
+          timestamp
+        };
+      } catch (err) {
+        console.error(`[GmailService] Error fetching message ${messageId}:`, err);
+        return null;
       }
+    }));
 
-      // Optimization: Skip if we already have the attachments and basic info.
-      // We will only do a full refresh for messages that might have changed labels.
-      if (existing) {
-        const hasMetadata = existing.attachments && Array.isArray(existing.attachments) && existing.attachments.length > 0;
-        // If it's a recent message we already know about, skip the slow full fetch
-        if (hasMetadata || !existing.has_attachments) {
-           // We still log the labels if we want to be thorough, but we don't NEED to re-fetch msgData here
-           // For now, let's skip the heaviest part (gmail.users.messages.get) for existing items
-           continue; 
-        }
-      }
+    emailsToUpsert.push(...chunkResults.filter(Boolean));
+  }
 
-      console.log(`[GmailService] Fetching/Updating data for message: ${messageId}`);
-      const msgData = await gmail.users.messages.get({
-        userId: 'me',
-        id: messageId as string,
-      });
-
-      const payload = msgData.data.payload;
-      const headers = payload?.headers;
-      const findHeader = (name: string) => headers?.find(h => h.name.toLowerCase() === name.toLowerCase())?.value || '';
-
-      const subject = findHeader('Subject');
-      const sender = findHeader('From');
-      const recipients = {
-        to: [findHeader('To')],
-        cc: [findHeader('Cc')].filter(Boolean),
-      };
-      const timestamp = findHeader('Date') ? new Date(findHeader('Date')).toISOString() : new Date().toISOString();
-      
-      // Extract full bodies for Option E
-      const bodyHtml = getBody(payload, 'text/html');
-      const bodyPlain = getBody(payload, 'text/plain');
-
-      const labels = msgData.data.labelIds || [];
-      const isRead = !labels.includes('UNREAD');
-      console.log(`[GmailService] Labels for message ${messageId}:`, labels);
-      
-      // Improved attachment extraction
-      const attachmentsList = getAttachments(payload?.parts || []);
-      const hasAttachments = attachmentsList.length > 0;
-
-      const { data: savedEmail, error: upsertErr } = await supabase.from('emails').upsert({
-        user_id: userId,
-        account_id: accountId,
-        provider_message_id: messageId,
-        subject,
-        sender,
-        recipients,
-        snippet: msgData.data.snippet || '',
-        body_html: bodyHtml || bodyPlain, // Favor HTML if available
-        body_plain: bodyPlain,
-        labels,
-        is_read: isRead,
-        has_attachments: hasAttachments,
-        attachments: attachmentsList,
-        timestamp
-      }, { onConflict: 'user_id, provider_message_id' }).select().single();
-      
-      if (upsertErr) {
-        console.error(`[GmailService] Failed to upsert ${messageId}:`, upsertErr.message);
-      } else if (savedEmail) {
-        fetchedEmails.push(savedEmail);
-      }
-    } catch (msgError) {
-      console.error(`[GmailService] Error processing message ${messageId}:`, msgError);
-      // Continue with next message instead of crashing the whole sync
-    }
+  // 4. Bulk Upsert everything in a single database transaction
+  if (emailsToUpsert.length > 0) {
+    console.log(`[GmailService] Bulk saving ${emailsToUpsert.length} new/updated emails...`);
+    const { error: bulkErr } = await supabase
+      .from('emails')
+      .upsert(emailsToUpsert, { onConflict: 'user_id, provider_message_id' });
+    
+    if (bulkErr) console.error('[GmailService] Bulk upsert error:', bulkErr.message);
   }
 
   await supabase.from('provider_accounts').update({ last_synced_at: new Date().toISOString() }).eq('id', accountId);
-
-  return fetchedEmails;
+  return emailsToUpsert;
 };
 
 export const getAttachment = async (accountId: string, messageId: string, attachmentId: string) => {

@@ -34,7 +34,7 @@ const COLORS = [
   { bg: "bg-pink-500/10", text: "text-pink-500", border: "border-pink-500/20", dot: "bg-pink-500" },
 ];
 
-export default function CalendarPage() {
+export default function CalendarPage({ isMini = false }: { isMini?: boolean }) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [events, setEvents] = useState<CalendarEvent[]>([]);
@@ -122,11 +122,14 @@ export default function CalendarPage() {
   };
 
   const renderDays = () => {
-    const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const days = isMini ? ["S", "M", "T", "W", "T", "F", "S"] : ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     return (
-      <div className="grid grid-cols-7 mb-4">
-        {days.map(day => (
-          <div key={day} className="text-center text-xs uppercase tracking-widest font-extrabold text-muted-foreground/60 py-2">
+      <div className="grid grid-cols-7 mb-2">
+        {days.map((day, i) => (
+          <div key={i} className={cn(
+            "text-center uppercase font-extrabold text-muted-foreground/60 py-1",
+            isMini ? "text-[10px] tracking-normal" : "text-xs tracking-widest"
+          )}>
             {day}
           </div>
         ))}
@@ -159,42 +162,54 @@ export default function CalendarPage() {
               key={i}
               onClick={() => onDateClick(d)}
               className={cn(
-                "min-h-[120px] p-3 bg-card transition-all cursor-pointer relative group",
+                isMini ? "min-h-[45px] p-1" : "min-h-[120px] p-3",
+                "bg-card transition-all cursor-pointer relative group",
                 !isCurrentMonth ? "bg-accent/5 opacity-40" : "",
                 isSelected ? "ring-2 ring-primary ring-inset z-10" : "hover:bg-accent/30"
               )}
             >
-              <div className="flex justify-between items-start mb-2">
+              <div className={cn("flex justify-between items-start", isMini ? "mb-0" : "mb-2")}>
                 <span className={cn(
-                  "w-8 h-8 flex items-center justify-center rounded-xl text-sm font-bold transition-all",
+                  "flex items-center justify-center rounded-xl font-bold transition-all",
+                  isMini ? "w-6 h-6 text-[10px]" : "w-8 h-8 text-sm",
                   isToday ? "bg-primary text-primary-foreground shadow-lg shadow-primary/30" : isSelected ? "text-primary" : "text-foreground/70"
                 )}>
                   {format(d, "d")}
                 </span>
-                {dayEvents.length > 0 && (
+                {!isMini && dayEvents.length > 0 && (
                   <span className="text-[10px] font-bold text-muted-foreground/40 group-hover:text-primary transition-colors">
                     {dayEvents.length} {dayEvents.length === 1 ? 'Event' : 'Events'}
                   </span>
                 )}
               </div>
-              <div className="space-y-1">
-                {dayEvents.slice(0, 3).map(event => {
-                  const colors = JSON.parse(event.color);
-                  return (
-                    <div 
-                      key={event.id}
-                      className={cn("text-[10px] font-bold px-2 py-1 rounded-lg truncate border", colors.bg, colors.text, colors.border)}
-                    >
-                      {event.time} {event.title}
+              {!isMini && (
+                <div className="space-y-1">
+                  {dayEvents.slice(0, 3).map(event => {
+                    const colors = JSON.parse(event.color);
+                    return (
+                      <div 
+                        key={event.id}
+                        className={cn("text-[10px] font-bold px-2 py-1 rounded-lg truncate border", colors.bg, colors.text, colors.border)}
+                      >
+                        {event.time} {event.title}
+                      </div>
+                    );
+                  })}
+                  {dayEvents.length > 3 && (
+                    <div className="text-[9px] font-bold text-muted-foreground pl-1">
+                      + {dayEvents.length - 3} more
                     </div>
-                  );
-                })}
-                {dayEvents.length > 3 && (
-                  <div className="text-[9px] font-bold text-muted-foreground pl-1">
-                    + {dayEvents.length - 3} more
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
+              )}
+              {isMini && dayEvents.length > 0 && (
+                <div className="absolute bottom-1 right-1 flex gap-0.5">
+                  {dayEvents.slice(0, 3).map(e => {
+                    const colors = JSON.parse(e.color);
+                    return <div key={e.id} className={cn("w-1 h-1 rounded-full", colors.dot)} />
+                  })}
+                </div>
+              )}
             </div>
           );
         })}
@@ -206,9 +221,9 @@ export default function CalendarPage() {
     const selectedEvents = events.filter(e => e.date === format(selectedDate, "yyyy-MM-dd"));
     
     return (
-      <div className="w-full lg:w-80 flex flex-col pt-4 lg:pt-0">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold tracking-tight">
+      <div className={cn("flex flex-col pt-4 lg:pt-0", isMini ? "w-full" : "w-full lg:w-80")}>
+        <div className={cn("flex items-center justify-between", isMini ? "mb-4" : "mb-6")}>
+          <h2 className={cn("font-bold tracking-tight", isMini ? "text-lg" : "text-xl")}>
             {isSameDay(selectedDate, new Date()) ? "Today's" : format(selectedDate, "MMM d")}
           </h2>
           <button 
@@ -257,14 +272,32 @@ export default function CalendarPage() {
   };
 
   return (
-    <div className="h-full flex flex-col pt-6 pb-20 px-8 lg:px-12 bg-background overflow-hidden">
-      <div className="w-full max-w-[1600px] mx-auto h-full flex flex-col lg:flex-row gap-12">
+    <div className={cn("h-full flex flex-col bg-background overflow-hidden", isMini ? "px-2 pt-2 pb-10" : "px-8 lg:px-12 pt-6 pb-20")}>
+      <div className={cn("w-full max-w-[1600px] mx-auto h-full flex flex-col gap-12", isMini ? "flex-col" : "lg:flex-row")}>
         <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
-          {renderHeader()}
-          <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
-            {renderDays()}
-            {renderCells()}
-          </div>
+          {isMini ? (
+            <div className="flex flex-col overflow-hidden">
+              <div className="flex items-center justify-between mb-2 px-1">
+                <span className="text-sm font-bold text-foreground/80">{format(currentMonth, "MMM yyyy")}</span>
+                <div className="flex items-center gap-1">
+                  <button onClick={prevMonth} className="p-1 hover:bg-accent rounded-lg transition-colors"><ChevronLeft className="w-4 h-4" /></button>
+                  <button onClick={nextMonth} className="p-1 hover:bg-accent rounded-lg transition-colors"><ChevronRight className="w-4 h-4" /></button>
+                </div>
+              </div>
+              <div className="flex-1 overflow-visible">
+                {renderDays()}
+                {renderCells()}
+              </div>
+            </div>
+          ) : (
+            <>
+              {renderHeader()}
+              <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+                {renderDays()}
+                {renderCells()}
+              </div>
+            </>
+          )}
         </div>
         {renderEventList()}
       </div>

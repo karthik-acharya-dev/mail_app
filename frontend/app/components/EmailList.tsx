@@ -131,10 +131,10 @@ export default function EmailList({ emails, selectedId, onSelect, onToggleStar, 
 
               <div className="mt-2 flex flex-wrap gap-1.5 items-center">
                 {/* CRM Client Link Badge */}
-                {email.client && (
+                {email.client && email.client.length > 0 && (
                   <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-primary text-primary-foreground text-[10px] font-bold shadow-sm">
                     <User className="w-2.5 h-2.5" />
-                    <span className="uppercase tracking-tight">{email.client.clients?.name || 'Linked Client'}</span>
+                    <span className="uppercase tracking-tight">{email.client[0].clients?.name || 'Linked Client'}</span>
                   </div>
                 )}
 

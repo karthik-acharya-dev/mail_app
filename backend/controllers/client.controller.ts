@@ -36,7 +36,44 @@ export const createClient = async (req: Request, res: Response) => {
 
     if (error) throw error;
     res.json(client);
+  } catch (error: any) {
+    console.error('Create Client Error:', error);
+    res.status(500).json({ error: error.message || 'Failed to create client' });
+  }
+};
+
+export const deleteClient = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user.id;
+    const { id } = req.params;
+
+    const { error } = await supabase
+      .from('clients')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', userId);
+
+    if (error) throw error;
+    res.json({ message: 'Client deleted successfully' });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to create client' });
+    res.status(500).json({ error: 'Failed to delete client' });
+  }
+};
+
+export const getClientEmails = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const { data: links, error } = await supabase
+      .from('email_client_links')
+      .select('email_id, emails(*)')
+      .eq('client_id', id);
+
+    if (error) throw error;
+    
+    const emails = links?.map(link => link.emails).filter(Boolean) || [];
+    res.json(emails);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch client emails' });
   }
 };
