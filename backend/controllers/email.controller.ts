@@ -169,15 +169,36 @@ export const linkToClient = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Missing emailId or clientId' });
     }
 
+    // Upsert link (ensure only one client per email for simplicity in this CRM)
     const { data, error } = await supabase
       .from('email_client_links')
-      .insert({ email_id: emailId, client_id: clientId })
+      .upsert({ email_id: emailId, client_id: clientId }, { onConflict: 'email_id, client_id' })
       .select();
 
     if (error) throw error;
     res.json(data[0]);
   } catch (error) {
     res.status(500).json({ error: 'Failed to link email to client' });
+  }
+};
+
+export const unlinkFromClient = async (req: Request, res: Response) => {
+  try {
+    const { emailId } = req.body;
+    
+    if (!emailId) {
+      return res.status(400).json({ error: 'Missing emailId' });
+    }
+
+    const { error } = await supabase
+      .from('email_client_links')
+      .delete()
+      .eq('email_id', emailId);
+
+    if (error) throw error;
+    res.json({ success: true, message: 'Unlinked successfully' });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to unlink' });
   }
 };
 

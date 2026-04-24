@@ -21,6 +21,7 @@ export default function EmailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isConnected, setIsConnected] = useState<boolean | null>(null);
   const [composeData, setComposeData] = useState<{ to?: string; subject?: string; body?: string, draftId?: string }>({});
+  const [autoSyncAttempted, setAutoSyncAttempted] = useState(false);
   
   const searchParams = useSearchParams();
   const query = searchParams.get("q");
@@ -64,6 +65,14 @@ export default function EmailPage() {
       loadEmails();
     }
   }, [loadEmails, isConnected]);
+
+  // Auto-sync on first load if empty
+  useEffect(() => {
+    if (isConnected === true && emails.length === 0 && !isSyncing && !isLoading && !autoSyncAttempted && !query) {
+      setAutoSyncAttempted(true);
+      handleSync();
+    }
+  }, [isConnected, emails.length, isSyncing, isLoading, autoSyncAttempted, query]);
 
   const selectedEmail = emails.find(e => e.id === selectedEmailId);
 
@@ -165,15 +174,27 @@ export default function EmailPage() {
               <p className="text-xs text-muted-foreground animate-pulse">Loading {query ? 'results' : 'inbox'}...</p>
             </div>
           ) : emails.length === 0 ? (
-             <div className="flex flex-col items-center justify-center h-64 opacity-30">
-               <Mail className="w-12 h-12 mb-2" />
-               <p className="text-sm">
-                 {folder === 'sent' ? 'No sent emails' : 
-                  folder === 'drafts' ? 'No drafts' :
-                  folder === 'starred' ? 'No starred messages' :
-                  folder === 'trash' ? 'Trash is empty' :
-                  folder === 'all' ? 'No messages' : 'Inbox is empty'}
-               </p>
+             <div className="flex flex-col items-center justify-center h-full min-h-[400px]">
+               {isSyncing ? (
+                 <SyncStatusAnimation />
+               ) : (
+                 <div className="flex flex-col items-center justify-center opacity-30 text-center">
+                   <Mail className="w-12 h-12 mb-2" />
+                   <p className="text-sm">
+                     {folder === 'sent' ? 'No sent emails' : 
+                      folder === 'drafts' ? 'No drafts' :
+                      folder === 'starred' ? 'No starred messages' :
+                      folder === 'trash' ? 'Trash is empty' :
+                      folder === 'all' ? 'No messages' : 'Inbox is empty'}
+                   </p>
+                   <button 
+                     onClick={handleSync}
+                     className="mt-4 text-xs font-bold text-primary hover:underline underline-offset-4"
+                   >
+                     Try syncing again
+                   </button>
+                 </div>
+               )}
              </div>
           ) : (
             <EmailList 
@@ -274,6 +295,15 @@ export default function EmailPage() {
                 console.error("Linking failed:", error);
               }
             }}
+            onUnlinkFromClient={async () => {
+              if (!selectedEmailId) return;
+              try {
+                await emailApi.unlinkFromClient(selectedEmailId);
+                await loadEmails();
+              } catch (error) {
+                console.error("Unlinking failed:", error);
+              }
+            }}
           />
         )}
       </div>
@@ -302,6 +332,68 @@ export default function EmailPage() {
           />
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+function SyncStatusAnimation() {
+  const [msgIndex, setMsgIndex] = useState(0);
+  const messages = [
+    "Linking your Google account...",
+    "Syncing your latest emails...",
+    "Organizing your inbox...",
+    "Almost there, finalizing data...",
+    "We are live to go! Preparing dashboard..."
+  ];
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setMsgIndex((prev) => (prev + 1) % messages.length);
+    }, 2800);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="flex flex-col items-center justify-center p-12 text-center max-w-sm mx-auto">
+      <div className="relative mb-12">
+        <div className="absolute inset-0 bg-primary/20 rounded-full blur-3xl animate-pulse" />
+        <div className="relative w-28 h-28 bg-card border border-border rounded-[40px] flex items-center justify-center shadow-2xl overflow-hidden group">
+          <div className="absolute inset-0 bg-gradient-to-tr from-primary/5 to-transparent group-hover:from-primary/10 transition-colors" />
+          <RefreshCcw className="w-10 h-10 text-primary animate-spin" />
+        </div>
+      </div>
+      
+      <div className="h-20 flex flex-col justify-center">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={msgIndex}
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
+            transition={{ duration: 0.6, ease: "easeOut" }}
+            className="space-y-3"
+          >
+            <h3 className="text-2xl font-extrabold tracking-tight text-foreground/90 leading-tight">
+              {messages[msgIndex]}
+            </h3>
+            <div className="flex items-center justify-center gap-2">
+              <div className="flex gap-1">
+                {[0, 1, 2].map(i => (
+                  <motion.div
+                    key={i}
+                    animate={{ scale: [1, 1.5, 1] }}
+                    transition={{ repeat: Infinity, duration: 1, delay: i * 0.2 }}
+                    className="w-1.5 h-1.5 rounded-full bg-primary/40"
+                  />
+                ))}
+              </div>
+              <p className="text-[10px] uppercase font-black tracking-widest text-muted-foreground/60">
+                Processing Data
+              </p>
+            </div>
+          </motion.div>
+        </AnimatePresence>
+      </div>
     </div>
   );
 }

@@ -29,7 +29,11 @@ export default function LandingPage() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/dashboard/email`
+        redirectTo: `${window.location.origin}/dashboard/email`,
+        queryParams: {
+          prompt: 'select_account',
+          access_type: 'offline',
+        }
       }
     });
     if (error) console.error("Login Error:", error.message);

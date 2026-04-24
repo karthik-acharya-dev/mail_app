@@ -26,18 +26,31 @@ interface EmailDetailProps {
   email: any;
   onClose: () => void;
   onLinkToClient: (clientId: string) => void;
+  onUnlinkFromClient: () => void;
   onReply?: (email: any) => void;
   onForward?: (email: any) => void;
   onToggleStar?: () => void;
   onDelete?: () => void;
 }
 
-export default function EmailDetail({ email, onClose, onLinkToClient, onReply, onForward, onToggleStar, onDelete }: EmailDetailProps) {
+export default function EmailDetail({ 
+  email, 
+  onClose, 
+  onLinkToClient, 
+  onReply, 
+  onForward, 
+  onToggleStar, 
+  onDelete, 
+  onUnlinkFromClient 
+}: EmailDetailProps) {
   console.log("[EmailDetail] Rendering email data:", email);
   const [showCRM, setShowCRM] = useState(false);
+  const [isAddClientOpen, setIsAddClientOpen] = useState(false);
+  const [newClient, setNewClient] = useState({ name: "", company: "", email: "" });
   const [clients, setClients] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isCreatingClient, setIsCreatingClient] = useState(false);
   const [linkingId, setLinkingId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -110,6 +123,26 @@ export default function EmailDetail({ email, onClose, onLinkToClient, onReply, o
     }
   };
 
+  const handleCreateClient = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newClient.name) return toast.error("Name is required");
+    
+    setIsCreatingClient(true);
+    try {
+      const client = await clientApi.createClient(newClient);
+      toast.success("Client created and ready to link!");
+      setClients([client, ...clients]);
+      setNewClient({ name: "", company: "", email: "" });
+      setIsAddClientOpen(false);
+      // Automatically link to this new client
+      handleLink(client.id);
+    } catch (error) {
+      toast.error("Failed to create client");
+    } finally {
+      setIsCreatingClient(false);
+    }
+  };
+
   // Safe HTML content with base styles for the iframe
   const srcDoc = `
     <!DOCTYPE html>
@@ -175,7 +208,7 @@ export default function EmailDetail({ email, onClose, onLinkToClient, onReply, o
           </div>
           
           <div className="flex items-center gap-2">
-            {!email.client ? (
+            {!email.client || email.client.length === 0 ? (
               <button
                 onClick={() => setShowCRM(true)}
                 className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-all text-xs font-bold shadow-lg shadow-primary/20"
@@ -184,9 +217,18 @@ export default function EmailDetail({ email, onClose, onLinkToClient, onReply, o
                 Link to CRM
               </button>
             ) : (
-              <div className="px-4 py-2 rounded-xl bg-primary/10 text-primary border border-primary/20 text-xs font-bold flex items-center gap-2">
-                <Check className="w-4 h-4" />
-                {email.client.clients?.name || 'Linked to CRM'}
+              <div className="group relative">
+                <div className="px-4 py-2 rounded-xl bg-primary/10 text-primary border border-primary/20 text-xs font-bold flex items-center gap-2">
+                  <Check className="w-4 h-4" />
+                  {email.client[0].clients?.name || 'Linked to CRM'}
+                </div>
+                <button 
+                  onClick={onUnlinkFromClient}
+                  className="absolute -top-2 -right-2 w-5 h-5 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:scale-110 shadow-lg"
+                  title="Unlink from client"
+                >
+                  <X className="w-3 h-3 stroke-[4]" />
+                </button>
               </div>
             )}
             <div className="h-4 w-[1px] bg-border mx-1" />
@@ -385,17 +427,94 @@ export default function EmailDetail({ email, onClose, onLinkToClient, onReply, o
                     </button>
                   ))
                 ) : (
-                  <div className="text-center py-10">
-                    <p className="text-sm text-muted-foreground">No clients found</p>
-                    <button className="mt-4 text-xs font-bold text-primary hover:underline flex items-center gap-1 mx-auto">
-                      <Plus className="w-3 h-3" />
-                      Create New Client
+                  <div className="text-center py-10 px-4">
+                    <p className="text-sm text-muted-foreground mb-4">No clients found matching "{searchQuery}"</p>
+                    <button 
+                      onClick={() => setIsAddClientOpen(true)}
+                      className="px-4 py-2 rounded-xl bg-primary/5 border border-primary/20 text-[10px] font-black text-primary uppercase tracking-widest hover:bg-primary/10 transition-all flex items-center gap-2 mx-auto"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Create "{searchQuery || 'New Client'}"
                     </button>
                   </div>
                 )}
               </div>
+
+              {/* Quick Add Sticky Footer */}
+              <div className="p-4 bg-muted/30 border-t border-border">
+                  <button 
+                    onClick={() => setIsAddClientOpen(true)}
+                    className="w-full py-3 rounded-xl bg-background border border-border hover:border-primary/50 text-[10px] font-black text-foreground uppercase tracking-widest transition-all flex items-center justify-center gap-2 group"
+                  >
+                    <Plus className="w-3.5 h-3.5 text-primary group-hover:scale-125 transition-transform" />
+                    Add New Business Client
+                  </button>
+              </div>
             </motion.div>
           </>
+        )}
+      </AnimatePresence>
+
+      {/* Reusable Add Client Modal */}
+      <AnimatePresence>
+        {isAddClientOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsAddClientOpen(false)}
+              className="absolute inset-0 bg-background/90 backdrop-blur-md"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-md glass-panel p-8 rounded-[40px] shadow-2xl border border-primary/20 overflow-hidden"
+            >
+              <div className="flex items-center justify-between mb-8">
+                <h2 className="text-2xl font-black uppercase italic tracking-tighter">QUICK CRM ADD</h2>
+                <button onClick={() => setIsAddClientOpen(false)} className="p-2 hover:bg-muted rounded-full">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleCreateClient} className="space-y-5">
+                <div>
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1 mb-2">FULL NAME</label>
+                  <input
+                    autoFocus
+                    required
+                    type="text"
+                    value={newClient.name}
+                    onChange={(e) => setNewClient({...newClient, name: e.target.value})}
+                    placeholder="e.g. John Doe"
+                    className="w-full bg-accent/20 border-2 border-transparent focus:border-primary/50 rounded-2xl px-6 py-4 outline-none transition-all font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1 mb-2">COMPANY</label>
+                  <input
+                    type="text"
+                    value={newClient.company}
+                    onChange={(e) => setNewClient({...newClient, company: e.target.value})}
+                    placeholder="Internal reference"
+                    className="w-full bg-accent/20 border-2 border-transparent focus:border-primary/50 rounded-2xl px-6 py-4 outline-none transition-all font-bold"
+                  />
+                </div>
+                
+                <div className="pt-6 flex gap-4">
+                  <button
+                    disabled={isCreatingClient}
+                    type="submit"
+                    className="flex-1 px-6 py-4 bg-primary text-primary-foreground rounded-2xl font-black hover:scale-105 active:scale-95 transition-all shadow-xl shadow-primary/30 flex items-center justify-center gap-2"
+                  >
+                    {isCreatingClient ? <Loader2 className="w-4 h-4 animate-spin" /> : "CREATE AND LINK"}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>

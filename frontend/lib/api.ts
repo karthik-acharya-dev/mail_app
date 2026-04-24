@@ -18,6 +18,7 @@ api.interceptors.request.use(async (config) => {
 export const authApi = {
   getGoogleAuthUrl: () => api.get('/auth/google/url').then(res => res.data.url),
   getConnectionStatus: () => api.get('/auth/status').then(res => res.data),
+  disconnectAccount: () => api.post('/auth/disconnect').then(res => res.data),
 };
 
 export const emailApi = {
@@ -47,6 +48,7 @@ export const emailApi = {
   deleteEmail: (emailId: string) => api.post('/emails/delete', { emailId }).then(res => res.data),
   markReadStatus: (emailId: string, isRead: boolean) => api.post('/emails/toggle-read', { emailId, isRead }).then(res => res.data),
   linkToClient: (emailId: string, clientId: string) => api.post('/emails/link', { emailId, clientId }).then(res => res.data),
+  unlinkFromClient: (emailId: string) => api.post('/emails/unlink', { emailId }).then(res => res.data),
   searchEmails: (query: string) => api.get(`/emails/search?q=${query}`).then(res => res.data),
   getAttachmentUrl: (emailId: string, attachmentId: string) => `${API_URL}/emails/attachment?emailId=${emailId}&attachmentId=${attachmentId}`,
 };
@@ -54,4 +56,6 @@ export const emailApi = {
 export const clientApi = {
   getClients: () => api.get('/clients').then(res => res.data),
   createClient: (data: { name: string; email?: string; company?: string }) => api.post('/clients', data).then(res => res.data),
+  deleteClient: (id: string) => api.delete(`/clients/${id}`).then(res => res.data),
+  getClientEmails: (id: string) => api.get(`/clients/${id}/emails`).then(res => res.data),
 };
